@@ -82,7 +82,7 @@ class Scenario:
             uav.state.energy = Energy
         self.reset_service(world)
 
-    # 划分奖励
+    # 奖励函数
     def reward(self, world):
         capacity_list, reward_list = self.get_sum_capacity(world)
         # capacity_sum = np.sum(capacity_list)
@@ -178,7 +178,7 @@ class Scenario:
         for landmark in world.landmarks.values():
             landmark.connected = False
 
-    # 计算当前数据传输率
+    # 根据香农计算当前信道容量
     def get_sum_capacity(self, world):
         capacity_list = []
         reward_list = []
@@ -197,7 +197,7 @@ class Scenario:
             reward_list.append(reward)
         return capacity_list, reward_list
 
-    # 计算某个UAV和地面设备之间的数据速率
+    # 计算某个UAV和地面设备之间的信道容量
     def get_capacity(self, uav, landmark):
         probability_los = self.get_probability(uav.state.pos, landmark.state.pos)  # 获得LoS概率
         pathLoss = self.get_passLoss(uav.state.pos, landmark.state.pos, probability_los)  # 获得平均路径损失

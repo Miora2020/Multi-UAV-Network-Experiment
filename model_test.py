@@ -15,14 +15,14 @@ import matplotlib.pyplot as plt
 
 
 per_episode_max_len = 200
-model_name = 'models/2UAVs_24012/'
+model_name = 'train_results_8/models/2UAVs_98021/'
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def weigth_init(m):
    if isinstance(m, nn.Conv2d):
        init.xavier_uniform_(m.weight.data)
-       init.constant_(m.bias.data,0.1)
+       init.constant_(m.bias.data, 0.1)
    elif isinstance(m, nn.BatchNorm2d):
        m.weight.data.fill_(1)
        m.bias.data.zero_()
@@ -46,6 +46,11 @@ def get_initial_trainer(env):
         # actors_tar[i].eval()
     return actors_tar
 
+def get_Jain_index(volumns):
+    volumns = np.array(volumns)
+    Jain = np.power(np.sum(volumns), 2) / (len(volumns) * np.sum(np.power(volumns, 2)))
+    return Jain
+
 # 用于检测训练好的模型
 def model_test():
     episode_step = 0
@@ -64,8 +69,6 @@ def model_test():
 
     while True:
         episode_step += 1
-
-
         action_n = []
         # action_n = [agent.actor(torch.from_numpy(obs).to(arglist.device, torch.float)).numpy() \
         # for agent, obs in zip(trainers_cur, obs_n)]
@@ -94,7 +97,10 @@ def model_test():
             for landmark in env.world.landmarks.values():
                 volumn.append(landmark.sum_throughput)
             x = [i for i in range(30)]
+            print(volumn)
             plt.plot(x, volumn)
+            jain_index = get_Jain_index(volumn)
+            print("Jain's Index:{}".format(jain_index))
             plt.show()
             env.close()
             break
@@ -104,7 +110,7 @@ def model_test():
         # print(rew_n)
         # print(new_obs_n)
         env.render()
-        # time.sleep(0.5)
+        time.sleep(3)
 
     # game_step = 0
     # for episode_gone in range(1000):

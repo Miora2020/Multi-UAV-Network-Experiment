@@ -26,7 +26,6 @@ class actor_agent(nn.Module):
         # x = self.bn_2(x)
         x = self.linear_3(x)
         policy = self.tanh(x)
-        # policy = F.softmax(x, dim=-1)
         return policy
 
 class critic_agent(nn.Module):
@@ -61,7 +60,6 @@ class openai_critic(nn.Module):
         self.linear_c3 = nn.Linear(num_hidden_2, 1)
 
         self.reset_parameters()
-        self.train()
 
     def reset_parameters(self):
         gain = nn.init.calculate_gain('leaky_relu')

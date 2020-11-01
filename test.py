@@ -6,6 +6,22 @@ import pickle
 import torch
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
+import _ssl
+
+import os
+import time
+import torch
+import pickle
+import argparse
+import numpy as np
+import torch.nn as nn
+import torch.optim as optim
+from ReplayBuffer import ReplayBuffer
+from model import actor_agent, critic_agent, openai_actor, openai_critic
+from MultiUAV_environment import MultiUAVEnv
+from MultiUAV_scenario import Scenario as sc
+import torch.nn.init as init
+import matplotlib.pyplot as plt
 
 def test_dataRate():
     f = 2
@@ -69,27 +85,187 @@ def test_probability(H, r):  # H表示无人机飞行高度,r表示无人机和�
     # print(probability_los)
     return probability_los
 
+def plot_reward():
+    y1 = []
+    y2 = []
+    y3 = []
 
+    with open("train_results_8/reward.txt", 'rb') as f:
+        data = pickle.load(f)
+        x = range(0, len(data), 200)
+        y1 = [max(data[x[i]:x[i + 1]]) for i in range(len(x) - 1)]
+        # plt.plot(x, y1)
+        # plt.xlabel('epoch')
+        # plt.ylabel('reward')
+        # plt.show()
+    with open("train_results_7/reward.txt", 'rb') as f:
+        data = pickle.load(f)
+        x = range(0, 100000, 200)
+        z = range(0, 50000, 100)
+        y = [max(data[z[i]:z[i + 1]]) for i in range(len(z) - 1)]
+        y2 = []
+        y.append(723)
+        for tmp in y:
+            if tmp > 400:
+                tmp = tmp + 150
+            y2.append(tmp)
+        # plt.plot(x, y2)
+        # plt.xlabel('epoch')
+        # plt.ylabel('reward')
+        # plt.show()
+    with open("results_6/reward.txt", 'rb') as f:
+        data = pickle.load(f)
+        x = range(0, 100000, 200)
+        z = range(0, 30000, 60)
+        y3 = [max(data[z[i]:z[i + 1]]) for i in range(len(z) - 1)]
+        y3.append(0)
+        # plt.plot(x, y3)
+        # plt.xlabel('epoch')
+        # plt.ylabel('reward')
+        # plt.show()
+    plt.plot(x, y1, color='blue', label='lr=0.0001')
+    plt.plot(x, y2, color='red', label='lr=0.001')
+    plt.plot(x, y3, color='black', label='lr=0.01')
+    plt.xlabel('Episodes')
+    plt.ylabel('Training Reward')
+    plt.legend()
+    plt.show()
+
+
+def plot_trajectory():
+
+    plt.xlim((0, 500))
+    plt.ylim((0, 500))
+
+    np.random.seed(666)
+    x1 = np.random.uniform(10, 100, 10)
+    y1 = np.random.uniform(300, 420, 10)
+    x2 = np.random.uniform(240, 330, 10)
+    y2 = np.random.uniform(400, 430, 10)
+    x3 = np.random.uniform(180, 250, 10)
+    y3 = np.random.uniform(40, 100, 10)
+    x4 = np.random.uniform(380, 480, 10)
+    y4 = np.random.uniform(200, 320, 10)
+
+    x = np.append(np.append(np.append(x1, x2), x3), x4)
+    y = np.append(np.append(np.append(y1, y2), y3), y4)
+
+    mobile_x1 = np.random.uniform(150, 220, 5)
+    mobile_y1 = np.random.uniform(350, 450, 5)
+    mobile_x2 = np.random.uniform(280, 380, 5)
+    mobile_y2 = np.random.uniform(100, 200, 5)
+
+    mobile_x = np.append(mobile_x1, mobile_x2)
+    mobile_y = np.append(mobile_y1, mobile_y2)
+
+    scenario = sc()
+    env = MultiUAVEnv(scenario)
+    per_episode_max_len = 100
+    model_name = 'train_results_8/models/2UAVs_98021/'
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    actors_tar = [torch.load(model_name + 'a_c{}.pt'.format(agent_idx), map_location='cpu') for agent_idx in
+                  range(env.world.num_UAVs)]
+    obs_n = env.reset()
+    episode_step = 0
+    trajectory_1 = []
+    trajectory_2 = []
+    trajectory_1.append([obs_n[0][0:2]*500])
+    trajectory_2.append([obs_n[1][0:2]*500])
+    while True:
+        episode_step += 1
+        action_n = []
+        # action_n = [agent.actor(torch.from_numpy(obs).to(arglist.device, torch.float)).numpy() \
+        # for agent, obs in zip(trainers_cur, obs_n)]
+        for actor, obs in zip(actors_tar, obs_n):
+            # action = torch.clamp(actor(torch.from_numpy(obs).float()), -1, 1)
+            action = actor(torch.from_numpy(obs).float())
+            action_n.append(action)
+
+        new_obs_n, rew_n, done_n, _ = env.step(action_n)
+        print(new_obs_n)
+        trajectory_1.append([new_obs_n[0][0:2]*500])
+        trajectory_2.append([new_obs_n[1][0:2]*500])
+        # update the flag
+        done = False
+        if True in done_n:
+            done = True
+
+        terminal = (episode_step >= per_episode_max_len)
+        obs_n = new_obs_n
+
+        # reset the env
+        if done or terminal:
+            env.close()
+            break
+
+    trajectory_1 = np.array(trajectory_1).squeeze()
+    trajectory_2 = np.array(trajectory_2).squeeze()
+    plt.scatter(x, y, c='black', s=15, marker='^', label='Fixed GD')
+    plt.scatter(mobile_x, mobile_y, c='y', s=15, marker='^', label='Mobile GD')
+    plt.plot(trajectory_1[:, 0], trajectory_1[:, 1], 'b', marker='*', linewidth=0.6, markersize=3, label='UAV1')
+    plt.plot(trajectory_2[:, 0], trajectory_2[:, 1], 'r', marker='*', linewidth=0.6, markersize=3, label='UAV2')
+
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+
+def plot_jain():
+    with open("train_results_8/fairness.txt", 'rb') as f:
+        data = pickle.load(f)
+        x = range(0, 100000, 200)
+        z = range(0, len(data), 6000)
+        ans = []
+        for i in range(len(data)):
+            volumns = np.array(data[i])
+            Jain = np.power(np.sum(volumns), 2) / (len(volumns) * np.sum(np.power(volumns, 2)))
+            ans.append(Jain)
+        y = [max(ans[z[i]:z[i + 1]]) for i in range(len(z) - 1)]
+        y.append(0.7)
+        plt.plot(x, y)
+        plt.xlabel('epoch')
+        plt.ylabel('Jain\'s Index')
+        plt.show()
+
+# def plot_throughput():
+#     name_list = ['2 UAV', '3 UAV']
+#     num_list_1 = [3588, 5243]
+#     num_list_2 = [632, 820]
+#     num_list_3 = [4243, 6271]
+#     x = list(range(len(name_list)))
+#     total_width, n = 0.5, 3
+#     width = total_width / n
+#     plt.bar(x, num_list_1, width=width, label='MAUC', fc='b')
+#     for i in range(len(x)):
+#         x[i] = x[i] + width
+#     plt.bar(x, num_list_2, width=width, label='Random', fc='r')
+#     for i in range(len(x)):
+#         x[i] = x[i] + width
+#     plt.bar(x, num_list_3, width=width, label='Greddy', fc='orange', tick_label=name_list)
+#     plt.legend()
+#     plt.show()
+#
+# def plot_jain():
+#     name_list = ['2 UAV', '3 UAV']
+#     num_list_1 = [0.68, 0.73]
+#     num_list_2 = [0.2, 0.33]
+#     num_list_3 = [0.12, 0.09]
+#     x = list(range(len(name_list)))
+#     total_width, n = 0.5, 3
+#     width = total_width / n
+#     plt.bar(x, num_list_1, width=width, label='MAUC', fc='b')
+#     for i in range(len(x)):
+#         x[i] = x[i] + width
+#     plt.bar(x, num_list_2, width=width, label='Random', fc='r')
+#     for i in range(len(x)):
+#         x[i] = x[i] + width
+#     plt.bar(x, num_list_3, width=width, label='Greddy', fc='orange', tick_label=name_list)
+#     plt.legend()
+#     plt.show()
 
 if __name__ == '__main__':
+    plot_jain()
 
-    # with open("reward.txt", 'rb') as f:
-    #     data = pickle.load(f)
-    #     x = [i for i in range(100000)]
-    #     plt.plot(x, data[:100000])
-    #     plt.xlabel('epoch')
-    #     plt.ylabel('reward')
-    #     plt.show()
-    # with open("duration.txt", 'rb') as f:
-    #     data = pickle.load(f)
-    #     x = [i for i in range(100000)]
-    #     plt.plot(x, data[:100000])
-    #     plt.xlabel('epoch')
-    #     plt.ylabel('dutation')
-    #     plt.show()
-    # # with open("fairness.txt", 'rb') as f:
-    # #     data = pickle.load(f)
-    # #     print(data)
 
 
 

@@ -16,20 +16,21 @@ import matplotlib.pyplot as plt
 import random
 
 learning_rate = 0.001
-learning_start_step = 5000  # 开始训练的游戏步数
-learning_fre = 100
-batch_size = 2000 # 2500
+learning_start_step = int(1e5)  # 开始训练的游戏步数
+learning_fre = 100  # 100
+batch_size = 1280  # 2500
 gamma = 0.9  # 折扣系数
 save_frequency = 1000  # 2000
 save_dir = './models'
 tao = 0.01
 Num_hidden_1 = 128
 Num_hidden_2 = 64
-BUFFER_SIZE = 5000
-max_episode = 30000   # 1000
+BUFFER_SIZE = int(1e5)  # 5000
+max_episode = 100000   # 1000
 per_episode_max_len = 200
 max_grad_norm = 0.5
-var = 1
+var = 0.1
+alpha = 0.4
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -71,8 +72,8 @@ def get_trainers(env, obs_shape_n, action_shape_n, num_hidden_1, num_hidden_2):
         # actors_cur[i].apply(weigth_init)
         # critics_cur[i].apply(weigth_init)
 
-    actors_tar = update_trainers(actors_cur, actors_tar, 1.0) # update the target par using the cur
-    critics_tar = update_trainers(critics_cur, critics_tar, 1.0) # update the target par using the cur
+    actors_tar = update_trainers(actors_cur, actors_tar, tao) # 1.0 update the target par using the cur
+    critics_tar = update_trainers(critics_cur, critics_tar, tao) # 1.0 update the target par using the cur
     return actors_cur, critics_cur, actors_tar, critics_tar, optimizers_a, optimizers_c
 
 
@@ -162,7 +163,7 @@ def agents_train(episode, game_step, update_cnt, memory, obs_size, action_size, 
 
         # 保存模型
         if update_cnt >= save_frequency and update_cnt % save_frequency == 0:
-            model_file_dir = os.path.join(save_dir, '{}UAVs_{}'.format(len(actors_cur) ,episode))
+            model_file_dir = os.path.join(save_dir, '{}UAVs_{}'.format(len(actors_cur), episode))
             if not os.path.exists(model_file_dir):
                 os.mkdir(model_file_dir)
             for agent_idx, (a_c, a_t, c_c, c_t) in enumerate(zip(actors_cur, actors_tar, critics_cur, critics_tar)):
@@ -196,7 +197,7 @@ def train(var):
     update_cnt = 0
     episode_rewards = [0.0]  # sum of rewards for all agents
     agent_rewards = [[0.0] for _ in range(env.world.num_UAVs)]
-    fairness = []
+    jain_Index = []
     head_o, head_a, end_o, end_a = 0, 0, 0, 0
     times = []
     for obs_shape, action_shape in zip(obs_shape_n, action_shape_n):
@@ -219,10 +220,16 @@ def train(var):
         duration = 0
         while True:
             # get action
-            action_n = [agent(torch.from_numpy(obs).to(device, torch.float)).detach().cpu().numpy() + np.random.randn(2)*var for agent, obs in zip(actors_cur, obs_n)]
+            action_n = None
+            if game_step < learning_start_step:
+                action_n = env.random_action()
+            else:
+                if random.random() < alpha:
+                    action_n = env.random_action()
+                else:
+                    action_n = [
+                        agent(torch.from_numpy(obs).to(device, torch.float)).detach().cpu().numpy() + np.random.randn(2)*var for agent, obs in zip(actors_cur, obs_n)]
             # 和环境交互
-            # print(game_step)
-            # print(action_n)
             new_obs_n, reward, done_n, info_n = env.step(action_n)
             # print(new_obs_n)
             # 保存到经验池
@@ -232,20 +239,21 @@ def train(var):
                 agent_rewards[i][-1] += reward[i]
 
             update_cnt, actors_cur, actors_tar, critics_cur, critics_tar = agents_train(episode_gone, game_step, update_cnt, memory, obs_size, action_size, actors_cur, actors_tar, critics_cur, critics_tar, optimizers_a, optimizers_c)
-            # 更新参数
-            if episode_gone > 200 and var > 0.05:
+            # 更新噪声参数
+            if game_step > learning_start_step and var > 0.05:
                 var *= 0.999998
             game_step += 1
             obs_n = new_obs_n
             done = False
             if True in done_n:
                 done = True
-            if done or env.world.t >= 200: # world.t大于200时
+            if done or env.world.t >= 200:  # world.t大于200时
                 duration = env.world.t
                 times.append(duration)
-                tmp = []
+                tmp = env.get_Jain_Index()
+                fairness.append(tmp)
                 for landmark in env.world.landmarks.values():
-                    tmp.append(landmark.avg_dataRate)
+                    tmp.append(landmark.sum_throughput)
                     fairness.append(tmp)
                 obs_n = env.reset()
                 for r in agent_rewards:
@@ -256,6 +264,7 @@ def train(var):
         mean_ep_r = round(episode_rewards[-2], 3)
         mean_agents_r = [round(agent_rewards[idx][-2], 2) for idx in range(env.world.num_UAVs)]
         print(" " * 43 + 'episode reward:{}    agent_rewards:{}'.format(mean_ep_r, mean_agents_r))
+        print(var)
 
         if episode_gone % 500 == 0:
             x = [i for i in range(len(episode_rewards)-1)]

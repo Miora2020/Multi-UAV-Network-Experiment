@@ -169,6 +169,10 @@ class MultiUAVEnv(gym.Env):
             action_n.append(action.sample())
         return action_n
 
+    def get_Jain_Index(self):
+        ans = self.sc.get_Jain_index(self.world)
+        return ans
+
 if __name__ == '__main__':
     # sc = sc()
     # env = MultiUAVEnv(sc)
@@ -186,28 +190,18 @@ if __name__ == '__main__':
     while True:
         print('----------------------')
         action_n = env.random_action()
-        print(action_n)
-        o, r, done, is_out_bound = env.step(action_n)
-        print(o)
-        print(r)
-        # for uav in env.world.UAVs:
-        #     print('[{},{}]'.format(uav.action.distance_x, uav.action.distance_y))
-        # print(is_out_bound)
-        # print(len(o))
-        # if done:
-        #     break
-        # for uav in env.world.UAVs:
-        #     print("当前无人机{}位置：".format(uav.id))
-        #     print(uav.state.pos)
-        #     print("当前无人机关联用户：")
-        #     print(uav.associator)
-        #     for i in uav.associator:
-        #         print(env.world.landmarks[str(i)].state.pos)
-
+        o, r, done, _ = env.step(action_n)
+        for uav in env.world.UAVs:
+            print("当前无人机{}位置：".format(uav.id))
+            print(uav.state.pos)
+            print("当前无人机{}关联用户：".format(uav.id))
+            print(uav.associator)
+            for i in uav.associator:
+                print(env.world.landmarks[str(i)].state.pos)
         # print(o)
-        print("当前系统的总吞吐量：{}".format(r))
+        print("当前step的reward：{}".format(r))
         env.render()
-        time.sleep(3)
+        time.sleep(1)
 
     # 随机策略模拟场景
     # sc = sc()
